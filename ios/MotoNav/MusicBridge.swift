@@ -75,6 +75,8 @@ final class MusicBridge {
                 let im = TextImage.render(String(value.prefix(200)), maxW: 360, size: slot == 5 ? 32 : 24, minSize: 18)
                 BleLink.shared.sendImage(slot: slot, w: im?.w ?? 0, h: im?.h ?? 0, data: im?.data ?? Data())
             }
+            // 封面：换歌时查一次（Apple Music 本地封面 / iTunes Search），type 5 bulk 发圆屏
+            if available { CoverArt.shared.update(title: title, artist: artist) }
         }
         if force || state != lastState { lastState = state; BleLink.shared.send(state) }
     }
