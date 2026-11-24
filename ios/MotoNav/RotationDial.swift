@@ -77,7 +77,10 @@ struct RotationDial: View {
     private func fingerAngle(_ p: CGPoint) -> Double? {
         let dx = p.x - size / 2, dy = p.y - size / 2
         if dx * dx + dy * dy < 15 * 15 { return nil }        // 太靠近圆心，角度不稳，不算
-        return atan2(dx, -dy) * 180 / .pi
+        // Explicit Double math: dx/dy are CGFloat, and ".pi" is ambiguous
+        // between Double.pi and CGFloat.pi under the Swift 6 type checker.
+        let radians = atan2(Double(dx), -Double(dy))
+        return radians * 180.0 / Double.pi
     }
 
     private func onDrag(_ p: CGPoint) {

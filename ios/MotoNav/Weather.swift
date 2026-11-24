@@ -122,7 +122,19 @@ final class Weather: ObservableObject {
         }
         var sources = ["和风天气 QWeather · https://www.qweather.com/", "https://developer.qweather.com/attribution.html"]
         for item in r { sources += dict(item?["metadata"])["attributions"] as? [String] ?? [] }
-        detail = (["\(place) · \(text) \(Int(temp.rounded()))°", windText, rain, air] + alerts.map { [ $0["headline"], $0["description"], $0["instruction"] ].compactMap { $0 as? String }.joined(separator: "\n") } + [title] + allNotes + Array(Set(sources)).sorted() + ["预警可能延迟，请以官方最新发布为准。更新：\(f.string(from: Date()))"]).joined(separator: "\n\n")
+        // Split the long chained expression into small typed steps.
+        // The single-expression form exceeded the Swift 6 type-checker time limit.
+        var parts: [String] = ["\(place) · \(text) \(Int(temp.rounded()))°", windText, rain, air]
+        let alertLines: [String] = alerts.map { a -> String in
+            let fields: [String] = [a["headline"], a["description"], a["instruction"]].compactMap { $0 as? String }
+            return fields.joined(separator: "\n")
+        }
+        parts.append(contentsOf: alertLines)
+        parts.append(title)
+        parts.append(contentsOf: allNotes)
+        parts.append(contentsOf: Array(Set(sources)).sorted())
+        parts.append("预警可能延迟，请以官方最新发布为准。更新：\(f.string(from: Date()))")
+        detail = parts.joined(separator: "\n\n")
         info = "\(place) \(text) \(Int(temp.rounded()))°；逐小时 \(hours.count) 个" + (allNotes.isEmpty ? "" : "；" + allNotes.joined(separator: "；"))
         lastAt = Date(); push()
     }
