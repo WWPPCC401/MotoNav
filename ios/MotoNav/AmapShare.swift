@@ -153,7 +153,11 @@ enum AmapShare {
             "&shareParam=\(enc(p.share))&uuid=\(UUID().uuidString)"
         let j = try json(try get(q).body)
         if int(j["code"]) != 1 { throw Fail("高德没有返回路线（\(int(j["code"]))）") }
-        guard let pl = (j["path_list"] as? [[String: Any]])?.first else { throw Fail("高德返回的数据里没有路线") }
+        // 和安卓端一致：取分享时选中的那条备选路线（pathIdx = 分享链接里记的“第几条”）。
+        // 以前这里写死取第一条，导致在高德里选了方案二/三后导入的仍是默认推荐路线。
+        let paths = j["path_list"] as? [[String: Any]] ?? []
+        guard !paths.isEmpty else { throw Fail("高德返回的数据里没有路线") }
+        let pl = paths[(0..<paths.count).contains(p.pathIdx) ? p.pathIdx : 0]
         var roads: [Road] = []
         for r in pl["path"] as? [[String: Any]] ?? [] {
             var rp: [LL] = []

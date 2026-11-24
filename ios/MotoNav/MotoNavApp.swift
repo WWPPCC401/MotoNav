@@ -41,6 +41,15 @@ struct MotoNavApp: App {
                 switch p[1] {
                 case "W": Weather.shared.request()                    // 滑到了天气页
                 case "A": break                                       // 按住接电话：iOS 不允许 App 接电话
+                case "V":                                             // 圆屏 PWR 侧键：切换导航播报静音
+                    // T,V,1 = 静音，T,V,0 = 恢复播报。由 WorkBuddy 侧键定制固件发送。
+                    if p.count >= 3 {
+                        let muted = (p[2] == "1")
+                        DispatchQueue.main.async {
+                            Settings.shared.voiceMuted = muted
+                            if muted { Speech.shared.stopNow() }       // 立刻掐掉正在念的那句
+                        }
+                    }
                 default: break
                 }
             }

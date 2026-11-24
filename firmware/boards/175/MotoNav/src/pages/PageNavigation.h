@@ -1,5 +1,31 @@
 #pragma once
+#include "../../resources/CoverArtDefault.h"
 // 音乐页面、手势换页和数据中断提示。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
+
+// WorkBuddy: draw a small square album cover centred on the music page.
+// Uses the phone-supplied RGB565 art (bulk type 5) when present, otherwise
+// the built-in vinyl placeholder so the square is never empty.
+void drawCoverArt(int y0, int size) {
+  const uint16_t *src; int sw, sh;
+  if (coverReady && coverPix && coverW > 0 && coverH > 0) {
+    src = coverPix; sw = coverW; sh = coverH;
+  } else {
+    src = COVER_DEFAULT; sw = COVER_DEFAULT_W; sh = COVER_DEFAULT_H;
+  }
+  int x0 = CX - size / 2;
+  for (int dy = 0; dy < size; dy++) {
+    int sy = dy * sh / size;
+    for (int dx = 0; dx < size; dx++) {
+      int sx = dx * sw / size;
+      gfx->drawPixel(x0 + dx, y0 + dy, src[sy * sw + sx]);
+    }
+  }
+  uint16_t edge = 0x39E7;                  // thin frame, readable on dark covers too
+  gfx->fillRect(x0, y0, size, 1, edge);
+  gfx->fillRect(x0, y0 + size - 1, size, 1, edge);
+  gfx->fillRect(x0, y0, 1, size, edge);
+  gfx->fillRect(x0 + size - 1, y0, 1, size, edge);
+}
 // ---- v5.5 跟手换页 ----
 // 触摸坐标和画面方向相反时改成 1（拖动时画面往手指反方向走就是反了）
 #define TOUCH_FLIP_X 1      // v5.5.1 实测左右是反的
@@ -16,17 +42,20 @@ void drawMusic() {
   gfx->fillScreen(C_BLACK);
   onWaitScreen = false;
   frameIsMap = false;
-  printCentered("MUSIC", CX, 65, 4, C_CYAN);
+  printCentered("MUSIC", CX, 22, 2, C_CYAN);
   bool linked = bleConnected && bleAuthed;
+  // WorkBuddy: album art as a small centred square, lyrics underneath.
+  const int COVER_SIZE = 150, COVER_Y = 48;
+  drawCoverArt(COVER_Y, COVER_SIZE);
   if (hidMusicMode && linked && !appleMedia.available) {
-    printCentered("PHONE MEDIA KEYS", CX, 158, 2, C_WHITE);
-    printCentered("OPEN MUSIC APP ON PHONE", CX, 210, 2, C_GREY);
+    printCentered("PHONE MEDIA KEYS", CX, 208, 2, C_WHITE);
+    printCentered("OPEN MUSIC APP ON PHONE", CX, 234, 2, C_GREY);
   } else if (linked) {
-    drawTextImg(5, 158, 0xFF);
-    drawTextImg(6, 210, 0xBB);
-  } else printCentered("PHONE OFFLINE", CX, 170, 3, C_GREY);
+    drawTextImg(5, 206, 0xFF);                         // title, right under the cover
+    drawTextImg(6, 244, 0xBB);                         // artist
+  } else printCentered("PHONE OFFLINE", CX, 216, 3, C_GREY);
   bool showLyrics = linked && hidMusicMode && musicLyrics && appleMedia.available && imgs[12].showW > 0;
-  if (showLyrics) drawTextImg(12, 242, 0xDD);
+  if (showLyrics) drawTextImg(12, 278, 0xDD);       // WorkBuddy: lyrics below the cover
   const char *feedback[] = {"", "SENT", "PHONE RECEIVED", "DONE", "NO RESPONSE", "NO PLAYER", "HID SENT", "HID NOT READY", "HID SEND FAILED", "AMS SENT", "AMS SEND FAILED", "AMS QUEUED"};
   String state = linked && musicHave ? (musicPlaying ? "PLAYING" : "PAUSED") : "NO PLAYER";
   if (hidMusicMode) {
@@ -34,24 +63,24 @@ void drawMusic() {
       : !appleMedia.playback.known ? "STATE UNKNOWN" : appleMedia.playback.state == 1 ? "PLAYING" : appleMedia.playback.state == 0 ? "PAUSED" : "SEEKING";
   }
   if (musicAck > 0 && musicAck <= 11) state = feedback[musicAck];
-  printCentered(state, CX, showLyrics ? 272 : 257, 2, musicAck == 4 ? C_ORANGE : C_GREY);
+  printCentered(state, CX, 312, 2, musicAck == 4 ? C_ORANGE : C_GREY);
   for (int i = 0; i < 3; i++) {
-    int x = CX + (i - 1) * 100, y = 335;
+    int x = CX + (i - 1) * 88, y = 372;                 // WorkBuddy: moved down to clear the lyrics band
     bool enabled = hidMusicMode ? (hidMediaReady() || appleMedia.controlReady(i)) : linked && musicHave;
     uint16_t c = enabled ? C_WHITE : C_GREY;
-    aaDisc(x, y, 43, enabled && musicPressed == i ? 0x0470 : enabled ? 0x19A7 : 0x1082);
+    aaDisc(x, y, 34, enabled && musicPressed == i ? 0x0470 : enabled ? 0x19A7 : 0x1082);
     if (i == 1) {
       if (hidMusicMode && !appleMedia.playback.known) {
-        gfx->fillTriangle(x - 19, y - 15, x - 19, y + 15, x + 1, y, c);
-        gfx->fillRect(x + 7, y - 15, 5, 30, c); gfx->fillRect(x + 16, y - 15, 5, 30, c);
+        gfx->fillTriangle(x - 15, y - 12, x - 15, y + 12, x + 1, y, c);
+        gfx->fillRect(x + 6, y - 12, 4, 24, c); gfx->fillRect(x + 13, y - 12, 4, 24, c);
       } else if (musicPlaying) {
-        gfx->fillRect(x - 13, y - 15, 8, 30, c);
-        gfx->fillRect(x + 5, y - 15, 8, 30, c);
-      } else gfx->fillTriangle(x - 10, y - 17, x - 10, y + 17, x + 17, y, c);
+        gfx->fillRect(x - 10, y - 12, 6, 24, c);
+        gfx->fillRect(x + 4, y - 12, 6, 24, c);
+      } else gfx->fillTriangle(x - 8, y - 13, x - 8, y + 13, x + 13, y, c);
     } else {
       int sign = i == 0 ? -1 : 1;
-      gfx->fillTriangle(x - sign * 12, y - 15, x - sign * 12, y + 15, x + sign * 10, y, c);
-      gfx->fillRect(x + sign * 15 - 3, y - 15, 6, 30, c);
+      gfx->fillTriangle(x - sign * 10, y - 12, x - sign * 10, y + 12, x + sign * 8, y, c);
+      gfx->fillRect(x + sign * 12 - 2, y - 12, 5, 24, c);
     }
   }
   if (hidMusicMode && appleMedia.available) {
@@ -60,9 +89,9 @@ void drawMusic() {
       double elapsed = appleMedia.playback.elapsed + appleMedia.playback.rate * (millis() - appleMedia.playbackAt) / 1000.0;
       int sec = (int)constrain(elapsed, 0.0, duration), total = (int)duration;
       char time[32]; snprintf(time, sizeof(time), "%d:%02d / %d:%02d", sec/60, sec%60, total/60, total%60);
-      printCentered(time, CX, 392, 2, C_GREY);
+      printCentered(time, CX, 424, 2, C_GREY);
     }
-  } else printCentered("SWIPE LEFT TO RETURN", CX, 402, 2, C_GREY);
+  } else printCentered("SWIPE TO RETURN", CX, 424, 2, C_GREY);
   drawPageDots();
   needFlush = true;
 }

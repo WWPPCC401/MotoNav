@@ -158,6 +158,11 @@ volatile uint32_t mediaConnectionEpoch = 0;
 uint32_t lyricImageGeneration = 0; uint16_t lyricImageTitleRevision = 0, lyricImageArtistRevision = 0;
 bool musicLyrics = false;                  // #ML,0/1; never persist an enabled default
 bool musicDirty = true;
+// ---- WorkBuddy: album cover art (bulk type 5, 200x200 RGB565 little-endian) ----
+#define COVER_PIX_MAX (200 * 200 * 2)
+uint16_t *coverPix = nullptr;              // display buffer in PSRAM, copied only when a full cover arrives
+bool coverReady = false;                   // a real cover was received from the phone
+int coverW = 0, coverH = 0;
 bool musicHave = false, musicPlaying = false;
 int musicActions = 0;
 int musicPressed = -1, musicAck = 0;

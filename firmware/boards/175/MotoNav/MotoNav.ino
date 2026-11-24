@@ -28,6 +28,7 @@
 #include "src/map/RasterRenderer.h"
 #include "src/map/RouteRenderer.h"
 #include "src/protocol/BulkReceiver.h"
+#include "src/input/SideButtons.h"          // WorkBuddy: physical side buttons (needs PageNavigation helpers)
 #include "src/power/BatteryPolling.h"
 #include "src/connectivity/Notifications.h"
 #include "src/map/MapPrimitives.h"
@@ -51,6 +52,7 @@ void setup() {
   Wire.begin(IIC_SDA, IIC_SCL);
   touchInit();                                         // v5.2 触摸屏
   batInit();                                           // v6.8 电源芯片（电量）
+  sideButtonsInit();                                   // WorkBuddy: BOOT / PWR 实体侧键
 
   // v2.3 读取保存的屏幕数据线速度（默认 40MHz，和官方示例一样）
   {
@@ -233,6 +235,7 @@ void loop() {
   if (mapNow) navDirty = true;
 
   touchPoll();                                         // v5.2 按住接听 / v5.3 滑动换页
+  sideButtonsPoll();                                   // WorkBuddy: BOOT/PWR 侧键
   batPoll();                                           // v6.8 电量
   // 4. 需要时重画导航画面
   // v6.5 配对：整屏显示配对码，配好 / 失败 / 60 秒 / 断开后回到原来的画面
@@ -322,6 +325,7 @@ void loop() {
   lightShown=showLight;
 
   // 6. 有变化才把画布推到屏幕（小地图帧异步推送，其他画面同步推送）
+  sideButtonsFrame();                                  // WorkBuddy: 静音 OSD 覆盖层
   if (needFlush && !sliding) {
     if (frameIsMap) flushAsync(); else flushSync();
     needFlush = false;

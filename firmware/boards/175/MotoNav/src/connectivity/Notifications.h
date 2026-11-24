@@ -55,4 +55,9 @@ void sendPendingAck() {
     txChar->notify();
     pendingEvt = "";
   }
+  if (pendingVoice.length()) {                        // WorkBuddy: PWR 侧键静音切换
+    txChar->setValue((uint8_t *)pendingVoice.c_str(), pendingVoice.length());
+    txChar->notify();
+    pendingVoice = "";
+  }
 }

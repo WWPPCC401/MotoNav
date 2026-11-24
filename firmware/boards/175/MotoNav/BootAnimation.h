@@ -11,7 +11,7 @@ static const int Size = 466;
 static const uint32_t Duration = 1900;
 struct Brand { const char *name; uint32_t color; };
 static const Brand Brands[] = {
-  {"MOTONAV",0x38E6C1}, {"HONDA",0xFF354D}, {"YAMAHA",0x5688FF},
+  {"666",0xFF7A18}, {"HONDA",0xFF354D}, {"YAMAHA",0x5688FF},
   {"SUZUKI",0x4D9EFF}, {"KAWASAKI",0x79E52B}, {"BMW",0x63B8FF},
   {"DUCATI",0xF43C45}, {"KTM",0xFF841F}, {"TRIUMPH",0xE1E8EF},
   {"HARLEY-DAVIDSON",0xFF972F}, {"APRILIA",0xFF4148},
@@ -80,7 +80,7 @@ public:
            cx+cosf(b*rad)*radius,cy+sinf(b*rad)*radius,width,color,gain);
     }
   }
-  // 5 x 7 display lettering. Uppercase A-Z, space and hyphen only.
+  // 5 x 7 display lettering. Uppercase A-Z, digits 0-9, space and hyphen.
   void text(const char *s,int y,int scale,uint32_t color,float gain=1.f,int spacing=1) {
     static const uint8_t font[26][5]={
       {0x7E,0x11,0x11,0x11,0x7E},{0x7F,0x49,0x49,0x49,0x36},
@@ -97,11 +97,19 @@ public:
       {0x3F,0x40,0x38,0x40,0x3F},{0x63,0x14,0x08,0x14,0x63},
       {0x07,0x08,0x70,0x08,0x07},{0x61,0x51,0x49,0x45,0x43}
     };
+    static const uint8_t digits[10][5]={
+      {0x3E,0x51,0x49,0x45,0x3E},{0x00,0x42,0x7F,0x40,0x00},
+      {0x42,0x61,0x51,0x49,0x46},{0x21,0x41,0x45,0x4B,0x31},
+      {0x18,0x14,0x12,0x7F,0x10},{0x27,0x45,0x45,0x45,0x39},
+      {0x3C,0x4A,0x49,0x49,0x30},{0x01,0x71,0x09,0x05,0x03},
+      {0x36,0x49,0x49,0x49,0x36},{0x06,0x49,0x49,0x29,0x1E}
+    };
     int n=strlen(s),advance=5*scale+spacing;
     int x=(Size-(n*advance-spacing))/2;
     for(int i=0;i<n;++i,x+=advance) {
       for(int col=0;col<5;++col) {
-        uint8_t bits=s[i]>='A'&&s[i]<='Z'?font[s[i]-'A'][col]:s[i]=='-'?8:0;
+        uint8_t bits=s[i]>='A'&&s[i]<='Z'?font[s[i]-'A'][col]:
+                    s[i]>='0'&&s[i]<='9'?digits[s[i]-'0'][col]:s[i]=='-'?8:0;
         for(int row=0;row<7;++row) if(bits&(1<<row))
           rect(x+col*scale,y+row*scale,scale,scale,rgb(color,gain));
       }

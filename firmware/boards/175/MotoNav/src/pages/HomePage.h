@@ -11,6 +11,8 @@
 // 没连上时摩托车灯熄灭、她闭眼打瞌睡，头上飘 z
 // v4.6 首页像素骑手（原创角色）：40×26，每格放大 RIDER_S 倍；由 rider2.py 生成
 #include "../../resources/RiderSprites.h"
+#include "../../resources/ReadyBackground.h"   // WorkBuddy 定制：全屏照片背景（等待画面）
+bool photoBg = true;                            // 等待画面用照片背景：像素骑手动画停用
 uint16_t riderColor(char ch) {
   switch (ch) {
     case 'K': return 0x18C6;
@@ -71,6 +73,7 @@ void drawRider(int f, int zph) {
 
 // 每 0.1 秒检查一次，样子变了才重画（函数名沿用 v3.6）
 void animateCat() {
+  if (photoBg) return;                          // 照片背景模式下骑手动画停用，避免擦掉照片
   if (!onWaitScreen || sliding) return;
   static unsigned long last = 0;
   unsigned long now = millis();
@@ -108,27 +111,36 @@ void drawPageDots() {
   }
 }
 
+// WorkBuddy 定制：带黑色描边的居中文字，保证照片背景上可读
+void printCenteredOut(const String &s, int x, int y, int size, uint16_t color) {
+  for (int dy = -1; dy <= 1; dy++)
+    for (int dx = -1; dx <= 1; dx++)
+      if (dx || dy) printCentered(s, x + dx * size, y + dy * size, size, C_BLACK);
+  printCentered(s, x, y, size, color);
+}
+
 void drawWaiting(int st) {
   waitSt = st;
   if (sliding) return;                                                 // v5.5 正在滑动：滑完再画
   if (page == 2) { onWaitScreen = false; musicDirty = true; return; }
   if (page == 1) { onWaitScreen = false; wxDirty = true; return; }   // v5.3 正在看天气：先不画首页，滑回来时再画
-  gfx->fillScreen(C_BLACK);
-  onWaitScreen = true; waitSt = st;          // v3.6 首页猫猫 → v4.6 像素骑手
+  onWaitScreen = true; waitSt = st;          // 照片背景仍算等待画面：状态栏电量只重画这一条
+  if (gfx->getFramebuffer()) memcpy(gfx->getFramebuffer(), READY_BG, sizeof(READY_BG));  // 全屏照片背景
+  else gfx->fillScreen(C_BLACK);
   riderPrevF = -1; riderPrevZ = -2;
   catForce = true;
-  animateCat();
-  printCentered("MotoNav", CX, 200, 6, st == WAIT_READY ? C_CYAN : C_GREY);
+  animateCat();                              // photoBg 模式下直接返回，不画像素骑手
+  printCenteredOut("MotoNav", CX, 200, 6, st == WAIT_READY ? C_CYAN : C_GREY);
   if (st == WAIT_READY) {
-    printCentered("ready", CX, 275, 3, C_GREEN);
+    printCenteredOut("ready", CX, 275, 3, C_GREEN);
   } else if (st == WAIT_NOLINK) {
-    printCentered("no link", CX, 275, 3, C_GREY);
+    printCenteredOut("no link", CX, 275, 3, C_GREY);
   } else {
     drawRedRing();
-    printCentered("LINK LOST", CX, 275, 4, C_RED);
+    printCenteredOut("LINK LOST", CX, 275, 4, C_RED);
   }
-  printCentered(bleName, CX, 332, 2, C_GREY);                          // v7.0 这块圆屏的蓝牙名
-  printCentered(String("fw ") + FW_VERSION + "  " + String(qspiMHz) + "MHz", CX, 360, 2, C_GREY);
+  printCenteredOut(bleName, CX, 332, 2, C_GREY);                          // v7.0 这块圆屏的蓝牙名
+  printCenteredOut(String("fw ") + FW_VERSION + "  " + String(qspiMHz) + "MHz", CX, 360, 2, C_GREY);
   drawStatus();
   drawPageDots();
   needFlush = true;

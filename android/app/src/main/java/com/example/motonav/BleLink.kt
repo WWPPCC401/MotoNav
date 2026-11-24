@@ -374,6 +374,15 @@ object BleLink {
         }
         val p = msg.split(',')
         if (p.size >= 3 && p[0] == "T" && p[1] == "M") { MusicBridge.onScreenEvent(p[2], p.drop(3).joinToString(",")); return }
+        if (p.size >= 3 && p[0] == "T" && p[1] == "V") {   // 圆屏 PWR 侧键：切换导航播报静音
+            val muted = p[2] == "1"
+            handler.post {
+                NaviVoice.muted = muted
+                appContext?.getSharedPreferences("motonav", Context.MODE_PRIVATE)
+                    ?.edit()?.putBoolean("nav_muted", muted)?.apply()
+            }
+            return
+        }
         if (p.size >= 4 && p[0] == "S") {               // v2.0.1 圆屏帧率统计
             val mhz = if (p.size >= 5) "，屏幕速度 ${p[4]}MHz" else ""
             screenFps = p[1]
