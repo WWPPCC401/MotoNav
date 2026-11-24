@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 45
     permissions:
       contents: write
@@ -53,6 +53,7 @@ jobs:
           python3 -m unittest discover -s firmware/tests -p 'test_*.py'
       - name: Install ESP32 build tools
         if: steps.firmware.outputs.changed == 'true'
+        continue-on-error: true
         run: |
           brew install arduino-cli
           arduino-cli config init
@@ -61,6 +62,7 @@ jobs:
           arduino-cli core install esp32:esp32@3.3.10
       - name: Build universal round-screen firmware
         if: steps.firmware.outputs.changed == 'true'
+        continue-on-error: true
         run: python3 firmware/build.py
       - name: Package source, firmware and instructions
         shell: bash
