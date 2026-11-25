@@ -48,6 +48,6 @@ import Foundation
 //   iOS v0.7.2 搜索失败时把高德的错误代码翻译成大白话：key 和 Bundle ID 对不上（1008/1009）、key 无效、次数用完、没权限
 //   iOS v0.15.1 专辑封面：音乐页换歌时自动查封面（Apple Music 本地封面 / iTunes Search API），居中裁方 200×200 RGB565，
 //             走 bulk type 5 发圆屏（80KB，换歌一次）；圆屏固件 v7.12.9-junction.11-cov.1 起音乐页显示圆形封面。
-let APP_VERSION = "iOS v0.15.2"
+let APP_VERSION = "iOS v0.15.3"
 
 // 高德 key 不再写在代码里（iOS v0.7 起）：用户在 App 的「Key 设置」里填，存在手机上，见 Settings.swift

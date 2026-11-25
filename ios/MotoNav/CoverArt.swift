@@ -1,97 +1,150 @@
 import UIKit
 import MediaPlayer
 
-/// 专辑封面：优先 Apple Music 本地封面，其次 iTunes Search API（免费无 Key）。
+/// 专辑封面：优先系统媒体封面 / Apple Music 本地封面，其次 iTunes Search API。
 /// 居中裁方缩到 200×200，编码成 RGB565 小端（80KB），走 bulk type 5 发给圆屏。
 /// 老固件不认识 type 5 会直接丢弃，安全。
-/// v0.15.2 修复：iTunes 中国区已无曲库（country=CN 恒 0 结果）→ 改走 us/jp/tw；
-/// 歌手名中英不一致（陈奕迅 vs Eason Chan）不再把结果全部过滤掉；
-/// 匹配失败时退回第一张可用封面；查询状态显示在 App 调试信息里，方便定位。
+///
+/// v0.15.3：网易云/QQ 音乐会把「作曲: xxx」「纯音乐，请欣赏」这类歌词/提示语
+/// 写进 AMS 的 Title 字段。用脏 Title 搜 iTunes 会拿到完全无关的封面，而
+/// v0.15.2 的「匹配不上就取第一张」兜底会把它直接推上圆屏。现在改为：
+///   1) 优先用 AMS 的 Album 字段（干净）搜 entity=album，直接拿专辑封面；
+///   2) Title 疑似歌词/提示语时不参与搜索；
+///   3) 只接受可靠匹配（分数 >= 8），匹配不上宁可保持当前封面，绝不取第一张凑数。
 final class CoverArt {
     static let shared = CoverArt()
     private var lastKey = ""
     private var lastAt = Date.distantPast
     private var id = 1
 
-    /// 换歌时调用；同一首歌 30 秒内不重复查，force 可强制重查
-    func update(title: String, artist: String, force: Bool = false) {
-        var t = title
-        while t.hasSuffix("…") || t.hasSuffix("...") { t = String(t.dropLast()) }
-        t = t.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return }
-        let key = t + "|" + artist
+    private struct Candidate: Sendable {
+        let term: String, entity: String, nameKey: String, label: String, target: String
+    }
+
+    /// 换歌时调用；同一张专辑 30 秒内不重复查，force 可强制重查
+    func update(title: String, artist: String, album: String, force: Bool = false) {
+        let t = Self.cleanText(title)
+        let a = Self.cleanText(album)
+        let who = Self.cleanText(artist)
+        let titleOK = !t.isEmpty && !Self.isLyrics(t)
+        let albumOK = !a.isEmpty && !Self.isLyrics(a)
+
+        guard titleOK || albumOK else {
+            let hint = Self.brief(t.isEmpty ? title : t)
+            DispatchQueue.main.async {
+                BleLink.shared.coverStatus = "歌名是歌词/提示语，跳过查询 [\(hint)]"
+            }
+            return
+        }
+
+        // 用专辑名做去重键：歌词每几秒就换一句，不能用脏 Title 当 key
+        let anchor = albumOK ? a : t
+        let key = anchor + "|" + who
         if !force && key == lastKey && Date().timeIntervalSince(lastAt) < 30 { return }
         lastKey = key
         lastAt = Date()
         let myId = id
         id = (id + 1) & 0xFF
-        let query = t, who = artist
+
+        var candidates: [Candidate] = []
+        if albumOK {
+            candidates.append(Candidate(term: a, entity: "album", nameKey: "collectionName", label: "专辑名", target: a))
+            candidates.append(Candidate(term: a, entity: "song", nameKey: "collectionName", label: "专辑名", target: a))
+            if !who.isEmpty {
+                candidates.append(Candidate(term: a + " " + who, entity: "album", nameKey: "collectionName", label: "专辑名", target: a))
+            }
+        }
+        if titleOK {
+            candidates.append(Candidate(term: t + " " + who, entity: "song", nameKey: "trackName", label: "歌名", target: t))
+            candidates.append(Candidate(term: t, entity: "song", nameKey: "trackName", label: "歌名", target: t))
+        }
+
+        let hint = Self.brief(anchor)
         Task.detached {
-            DispatchQueue.main.async { BleLink.shared.coverStatus = "查询中：\(query)" }
-            guard let hit = await Self.fetchEncoded(title: query, artist: who) else {
-                DispatchQueue.main.async { BleLink.shared.coverStatus = "未找到封面：\(query)（us/jp/tw）" }
+            DispatchQueue.main.async { BleLink.shared.coverStatus = "查询中：\(hint)" }
+            guard let hit = await Self.fetchEncoded(candidates: candidates, artist: who) else {
+                DispatchQueue.main.async { BleLink.shared.coverStatus = "无可靠匹配，保持当前封面 [\(hint)]" }
                 return
             }
             let data = hit.0, label = hit.1
             DispatchQueue.main.async {
-                BleLink.shared.coverStatus = "\(label) ✓ 已发送 \(data.count / 1024) KB"
+                BleLink.shared.coverStatus = "\(label) ✓ 已发送 \(data.count / 1024) KB [\(hint)]"
                 BleLink.shared.sendBulk(type: 5, id: myId, data: data)
             }
         }
     }
 
     /// 返回 (RGB565 数据, 来源标签)
-    static func fetchEncoded(title: String, artist: String) async -> (Data, String)? {
-        // 1) 系统播放器正在放的歌：直接拿本地封面（无需网络）
+    private static func fetchEncoded(candidates: [Candidate], artist: String) async -> (Data, String)? {
+        // 1) Apple Music 本地封面
         if MPMediaLibrary.authorizationStatus() == .authorized {
             let item: MPMediaItem? = await MainActor.run { MPMusicPlayerController.systemMusicPlayer.nowPlayingItem }
             if let art = item?.artwork,
                let img = art.image(at: CGSize(width: 300, height: 300)),
                let d = encode(img) { return (d, "本地封面") }
         }
-        // 2) iTunes Search API：中国区 iTunes Store 不卖歌，改走 us / jp / tw
-        let nt = norm(title)
+        // 2) 系统正在播放的媒体封面（若系统允许跨 App 读取，这是最精确的一张）
+        let systemArt: Data? = await MainActor.run {
+            guard let info = MPNowPlayingInfoCenter.default().nowPlayingInfo,
+                  let art = info[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork,
+                  let img = art.image(at: CGSize(width: 300, height: 300)) else { return nil }
+            return encode(img)
+        }
+        if let d = systemArt { return (d, "系统媒体封面") }
+
+        // 3) iTunes Search API（中国区无曲库，走 us / jp / tw）
         let na = norm(artist)
-        let terms = [clean(title) + " " + clean(artist), clean(title)]
-        for country in ["us", "jp", "tw"] {
-            for term in terms where !term.isEmpty {
+        var requests = 0
+        for c in candidates {
+            for country in ["us", "jp", "tw"] {
+                if requests >= 10 { return nil }
+                requests += 1
                 var comps = URLComponents(string: "https://itunes.apple.com/search")
                 comps?.queryItems = [
-                    URLQueryItem(name: "term", value: term),
-                    URLQueryItem(name: "entity", value: "song"),
+                    URLQueryItem(name: "term", value: c.term),
+                    URLQueryItem(name: "entity", value: c.entity),
                     URLQueryItem(name: "limit", value: "12"),
                     URLQueryItem(name: "country", value: country)
                 ]
                 guard let url = comps?.url else { continue }
-                var req = URLRequest(url: url, timeoutInterval: 8)
+                var req = URLRequest(url: url, timeoutInterval: 7)
                 req.setValue("Mozilla/5.0 (iPhone)", forHTTPHeaderField: "User-Agent")
                 guard let (raw, resp) = try? await URLSession.shared.data(for: req),
                       (resp as? HTTPURLResponse)?.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
                       let results = json["results"] as? [[String: Any]], !results.isEmpty else { continue }
-                var bestURL: String? = nil, bestScore = 0
+
+                let target = norm(c.target)
+                var bestURL: String? = nil, bestScore = 0, bestLen = Int.max
                 for r in results {
                     guard let u = r["artworkUrl100"] as? String else { continue }
-                    let rn = norm(r["trackName"] as? String ?? "")
+                    let name = (r[c.nameKey] as? String)
+                        ?? (r["trackName"] as? String)
+                        ?? (r["collectionName"] as? String) ?? ""
+                    let n = norm(name)
                     var s = 0
-                    if !nt.isEmpty && rn.contains(nt) { s = 10 }
-                    else if !nt.isEmpty && !rn.isEmpty && nt.contains(rn) { s = 8 }
-                    else if !nt.isEmpty {
-                        let p = nt.prefix(min(3, nt.count))
-                        if !p.isEmpty && rn.hasPrefix(String(p)) { s = 5 }
+                    if !target.isEmpty && n == target { s = 20 }          // 完全同名最优先
+                    else if !target.isEmpty && n.contains(target) { s = 10 }
+                    else if !target.isEmpty && !n.isEmpty && target.contains(n) { s = 8 }
+                    else if !target.isEmpty {
+                        let p = target.prefix(min(4, target.count))
+                        if !p.isEmpty && n.hasPrefix(String(p)) { s = 5 }
                     }
-                    // 歌手只加分、不再硬过滤：iTunes 元数据常用英文名（Eason Chan / Mao Bu Yi）
+                    // 歌手只加分、不硬过滤：iTunes 常用英文名（Eason Chan / Mao Bu Yi）
                     if !na.isEmpty, let a = r["artistName"] as? String {
                         let ra = norm(a)
                         if ra.contains(na) || na.contains(ra) { s += 2 }
                     }
-                    if s > bestScore { bestScore = s; bestURL = u }
+                    // 同分选名称更短的，避开 Remixes / B-Sides / Vol.2 之类衍生版
+                    if s > bestScore || (s == bestScore && s > 0 && n.count < bestLen) {
+                        bestScore = s; bestLen = n.count; bestURL = u
+                    }
                 }
-                // 兜底：完全匹配不上也拿第一张，总比内置黑胶强
-                if bestURL == nil { bestURL = results.compactMap { $0["artworkUrl100"] as? String }.first }
-                guard let u = bestURL, let imageData = await download(u) else { continue }
-                guard let img = UIImage(data: imageData), let out = encode(img) else { continue }
-                return (out, bestScore >= 8 ? "iTunes(\(country)) 精确" : "iTunes(\(country)) 近似")
+                // 只接受可靠匹配；绝不用「第一张」凑数，避免张冠李戴
+                guard bestScore >= 8, let u = bestURL,
+                      let imageData = await download(u),
+                      let img = UIImage(data: imageData), let out = encode(img) else { continue }
+                return (out, "\(c.label)(\(country))")
             }
         }
         return nil
@@ -106,6 +159,33 @@ final class CoverArt {
             return d
         }
         return nil
+    }
+
+    // MARK: - 歌名卫生
+
+    private static let junkWords = [
+        "作曲", "作词", "编曲", "演唱", "词曲", "制作人", "出品", "监制",
+        "纯音乐", "请欣赏", "暂无歌词", "歌词", "lrc", "伴奏", "试听",
+        "op:", "sp:", "作曲:", "作词:"
+    ]
+
+    /// 判断这条「歌名」是不是被音乐 App 塞进来的歌词 / 歌曲信息 / 提示语
+    static func isLyrics(_ s: String) -> Bool {
+        let low = s.lowercased()
+        if junkWords.contains(where: { low.contains($0) }) { return true }
+        if s.count > 32 { return true }                 // 歌词行通常比歌名长
+        if s.contains("，") || s.contains("、") { return true }
+        return false
+    }
+
+    private static func cleanText(_ s: String) -> String {
+        var t = s
+        while t.hasSuffix("…") || t.hasSuffix("...") { t = String(t.dropLast()) }
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func brief(_ s: String) -> String {
+        s.count <= 14 ? s : String(s.prefix(14)) + "…"
     }
 
     /// 去掉括号里的版本说明、常见后缀，只留文字数字，方便中英混排比对
