@@ -76,7 +76,8 @@ final class MusicBridge {
                 BleLink.shared.sendImage(slot: slot, w: im?.w ?? 0, h: im?.h ?? 0, data: im?.data ?? Data())
             }
             // 封面：换歌时查一次（Apple Music 本地封面 / iTunes Search），type 5 bulk 发圆屏
-            if available { CoverArt.shared.update(title: title, artist: artist) }
+            if available { CoverArt.shared.update(title: title, artist: artist, force: force) }
+            else { BleLink.shared.coverStatus = "无歌曲信息（未触发查询）" }
         }
         if force || state != lastState { lastState = state; BleLink.shared.send(state) }
     }

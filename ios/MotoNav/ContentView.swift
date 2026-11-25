@@ -592,6 +592,7 @@ struct ContentView: View {
                 \(navi.extraInfo)
                 小地图：\(map.infoText)
                 地图数据累计发送 \(ble.bulkKB) KB
+                专辑封面：\(ble.coverStatus)
                 天气：\(weather.info)
                 """)
                 .font(.caption.monospaced())

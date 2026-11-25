@@ -24,6 +24,7 @@ final class BleLink: NSObject, ObservableObject {
     @Published private(set) var mediaAMSControls = 0
     @Published var mediaLyricsStatus = ""
     @Published var mediaSongInfo = ""
+    @Published var coverStatus = "未触发（等待歌曲信息）"   // v0.15.2 专辑封面查询状态，显示在调试信息里
     @Published private(set) var mediaHIDSupported = false
     @Published private(set) var mediaHIDReady = false
     @Published private(set) var mediaHIDMode = false
